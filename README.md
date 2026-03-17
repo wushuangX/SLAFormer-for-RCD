@@ -9,6 +9,9 @@ This repository provides the official implementation of the paper:
 Tao Lei, Qiong Zhou, Tongfei Liu*, Shuxin Zhang, Yingbo Wang, Daqi Liu, and Maoguo Gong [J]. [SLAFormer: Skeleton-Guided Large-Kernel Attention Transformer for Road Change Detection](https://ieeexplore.ieee.org/document/11218920),
 **IEEE Transactions on Geoscience and Remote Sensing, 2025**, 63.
 
+The framework of the proposed SLAFormer is presented as follows:
+![Framework of our proposed SLAFormer)](https://github.com/TongfeiLiu/SLAFormer-for-RCD/blob/main/Figures/Framework.png)
+
 ## 📜 Citation
 If you find our work useful for your research, please consider citing our paper:
 
@@ -23,9 +26,6 @@ If you find our work useful for your research, please consider citing our paper:
   pages={1-15},
   doi={10.1109/TGRS.2025.3625970}}
 ```
-
-The framework of the proposed SLAFormer is presented as follows:
-![Framework of our proposed SLAFormer)](https://github.com/TongfeiLiu/SLAFormer-for-RCD/blob/main/Figures/Framework.png)
 
 ## ❤️Acknowledgement
 We are very grateful for the outstanding contributions of the publicly available Road CD datasets and codes [1,2].

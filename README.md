@@ -10,4 +10,4 @@ Tao Lei, Qiong Zhou, Tongfei Liu*, Shuxin Zhang, Yingbo Wang, Daqi Liu, and Maog
 **IEEE Transactions on Geoscience and Remote Sensing, 2025**, 63.
 
 The framework of the proposed SLAFormer is presented as follows:
-![Framework of our proposed SLAFormer)](https://github.com/TongfeiLiu/DGKAN-for-MCD/blob/main/Figures/Freamwork.png)
+![Framework of our proposed SLAFormer)](https://github.com/TongfeiLiu/SLAFormer-for-RCD/blob/main/Figures/Framework.png)

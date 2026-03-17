@@ -11,3 +11,20 @@ Tao Lei, Qiong Zhou, Tongfei Liu*, Shuxin Zhang, Yingbo Wang, Daqi Liu, and Maog
 
 The framework of the proposed SLAFormer is presented as follows:
 ![Framework of our proposed SLAFormer)](https://github.com/TongfeiLiu/SLAFormer-for-RCD/blob/main/Figures/Framework.png)
+
+## ❤️Acknowledgement
+We are very grateful for the outstanding contributions of the publicly available Road CD datasets and codes [1,2].
+
+```
+[1] Zhou M, Sui H, Chen S, et al. UGRoadUpd: An unchanged-guided historical road database updating framework based on bi-temporal remote sensing images[J]. IEEE Transactions on Intelligent Transportation Systems, 2022, 23(11): 21465-21477.
+[2] Wang W, Xie E, Li X, et al. Pvt v2: Improved baselines with pyramid vision transformer[J]. Computational visual media, 2022, 8(3): 415-424.
+```
+
+## 📮 Contact
+
+If you have any problems (or cooperation) when running the code, please do not hesitate to contact us by:
+
+- Qiong Zhou: zqdemail0226@163.com
+- Tongfei Liu: liutongfei_home@hotmail.com
+
+---

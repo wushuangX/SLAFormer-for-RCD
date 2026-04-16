@@ -84,6 +84,8 @@ def compute_metrics(preds, targets, threshold=0.5):
         'f1': f1.item(),
         'ciou': iou_change.item(),
         'miou': miou.item(),
+        'pred_pos_rate': pred_binary.mean().item(),
+        'label_pos_rate': targets.mean().item(),
     }
 
 
@@ -101,43 +103,11 @@ def denormalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
     return torch.clamp(out, 0, 1)
 
 
-def make_grid_row(img1_t, img2_t, gt, pred, alpha=0.5):
-    """将3张图拼接为一个 (3, H, 3W) 的可视化张量"""
-    h, w = img1_t.shape[1:]
-    cells = []
-
-    def to_rgb(t):
-        if t.shape[0] == 1:
-            t = t.repeat(3, 1, 1)
-        return t
-
-    cells.append(to_rgb(img1_t))
-    cells.append(to_rgb(img2_t))
-    cells.append(to_rgb(gt))
-
-    pred_color = torch.zeros(3, h, w)
-    pred_color[0] = pred.squeeze(0)
-    gt_color = torch.zeros(3, h, w)
-    gt_color[1] = gt.squeeze(0)
-
-    cells.append(to_rgb(pred))
-    cells.append(to_rgb(gt))
-
-    diff = torch.abs(pred.float() - gt.float())
-    diff_color = diff.repeat(3, 1, 1) * 3
-    cells.append(torch.clamp(diff_color, 0, 1))
-
-    row = torch.cat(cells, dim=2)
-    return row
-
-
 def visualize_predictions(model, dataloader, device, save_dir, num_vis=20, threshold=0.5):
-    """在测试集上推理并保存可视化结果"""
     model.eval()
     os.makedirs(save_dir, exist_ok=True)
 
     count = 0
-    all_metrics = []
 
     with torch.no_grad():
         for batch_idx, (img1, img2, label) in enumerate(dataloader):
@@ -154,36 +124,43 @@ def visualize_predictions(model, dataloader, device, save_dir, num_vis=20, thres
                 if count >= num_vis:
                     break
 
-                idx_in_batch = i
-                vis_row = []
-
                 img1_vis = denormalize(img1[i].cpu())
                 img2_vis = denormalize(img2[i].cpu())
-
                 gt_mask = label[i].cpu()
                 pred_mask = preds[i].cpu()
 
-                combined = torch.zeros(3, 256, 256 * 6)
+                h, w = 256, 256
+                grid = torch.zeros(3, h, w * 6)
 
-                combined[:, :, 0:256] = img1_vis
-                combined[:, :, 256:512] = img2_vis
-                combined[:, :, 512:768] = gt_mask.repeat(3, 1, 1) if gt_mask.shape[0] == 1 else gt_mask
-                combined[:, :, 768:1024] = pred_mask.repeat(3, 1, 1) if pred_mask.shape[0] == 1 else pred_mask
+                def to_rgb(t):
+                    if t.shape[0] == 1:
+                        return t.repeat(3, 1, 1)
+                    return t
+
+                grid[:, :, 0:w] = to_rgb(img1_vis)
+                grid[:, :, w:2*w] = to_rgb(img2_vis)
+                grid[:, :, 2*w:3*w] = to_rgb(gt_mask)
+                grid[:, :, 3*w:4*w] = to_rgb(pred_mask)
+
+                diff = torch.abs(pred_mask.float() - gt_mask.float())
+                diff_map = torch.zeros(3, h, w)
+                diff_map[0] = diff.squeeze(0)
+                diff_map[1] = gt_mask.squeeze(0) * 0.5
+                diff_map = torch.clamp(diff_map, 0, 1)
+                grid[:, :, 4*w:5*w] = diff_map
 
                 overlap = pred_mask * gt_mask
-                diff_map = torch.zeros(3, 256, 256)
-                diff_map[0] = pred_mask.squeeze(0)
-                diff_map[1] = gt_mask.squeeze(0)
-                diff_map = torch.clamp(diff_map, 0, 1)
-                combined[:, :, 1024:1280] = diff_map
+                overlap_map = torch.zeros(3, h, w)
+                overlap_map[0] = pred_mask.squeeze(0) * 0.7
+                overlap_map[1] = gt_mask.squeeze(0) * 0.7
+                overlap_map = torch.clamp(overlap_map, 0, 1)
+                grid[:, :, 5*w:6*w] = overlap_map
 
                 import torchvision.utils as vutils
-                vutils.save_image(combined,
+                vutils.save_image(grid,
                                   os.path.join(save_dir, f'sample_{count:04d}.png'),
-                                  nrow=1, normalize=False)
+                                  normalize=False)
 
-                batch_iou = compute_batch_iou(preds[i:i+1], label[i:i+1])
-                all_metrics.append(batch_iou)
                 count += 1
 
             if count >= num_vis:
@@ -192,8 +169,7 @@ def visualize_predictions(model, dataloader, device, save_dir, num_vis=20, thres
     print(f'已保存 {count} 张可视化结果到 {save_dir}/')
 
 
-def evaluate(model, dataloader, device, threshold=0.5):
-    """在测试集上评估，返回指标"""
+def evaluate(model, dataloader, device, threshold=0.5, verbose=True):
     model.eval()
     total_loss = 0
     total_precision = 0
@@ -204,9 +180,11 @@ def evaluate(model, dataloader, device, threshold=0.5):
     n_batches = 0
 
     criterion = nn.BCEWithLogitsLoss()
+    all_probs = []
+    all_labels = []
 
     with torch.no_grad():
-        for img1, img2, label in dataloader:
+        for batch_idx, (img1, img2, label) in enumerate(dataloader):
             img1 = img1.to(device)
             img2 = img2.to(device)
             label = label.to(device)
@@ -215,6 +193,10 @@ def evaluate(model, dataloader, device, threshold=0.5):
             loss = criterion(output, label)
             total_loss += loss.item()
 
+            probs = torch.sigmoid(output)
+            all_probs.append(probs.cpu())
+            all_labels.append(label.cpu())
+
             metrics = compute_metrics(output, label, threshold)
             total_precision += metrics['precision']
             total_recall += metrics['recall']
@@ -222,6 +204,21 @@ def evaluate(model, dataloader, device, threshold=0.5):
             total_ciou += metrics['ciou']
             total_miou += metrics['miou']
             n_batches += 1
+
+            if verbose and batch_idx == 0:
+                print(f'  [诊断 batch 0] output range: [{output.min().item():.4f}, {output.max().item():.4f}]')
+                print(f'  [诊断 batch 0] sigmoid range: [{probs.min().item():.4f}, {probs.max().item():.4f}]')
+                print(f'  [诊断 batch 0] label range: [{label.min().item():.4f}, {label.max().item():.4f}]')
+                print(f'  [诊断 batch 0] pred_pos_rate: {metrics["pred_pos_rate"]:.4f}')
+                print(f'  [诊断 batch 0] label_pos_rate: {metrics["label_pos_rate"]:.4f}')
+
+    all_probs = torch.cat(all_probs, dim=0)
+    all_labels = torch.cat(all_labels, dim=0)
+
+    if verbose:
+        print(f'  [全局诊断] sigmoid 均值: {all_probs.mean().item():.4f}, '
+              f'中位数: {all_probs.median().item():.4f}')
+        print(f'  [全局诊断] label 均值: {all_labels.mean().item():.4f}')
 
     n = n_batches
     return {
@@ -245,9 +242,13 @@ def main():
     print(f'Dataset:    {args.dataset}')
     print(f'Device:     {args.device}')
     print(f'Save dir:   {args.save_dir}')
+    print(f'Threshold:  {args.threshold}')
     print('=' * 60)
 
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+    print(f'使用设备: {device}')
+
+    os.makedirs(args.save_dir, exist_ok=True)
 
     test_dataset = NPYChangeDetectionDataset(
         move='test',
@@ -278,13 +279,16 @@ def main():
     if unexpected_keys:
         print(f'跳过检查点中的 {len(unexpected_keys)} 个额外键: {unexpected_keys[:5]}...')
     loaded_state = {k: v for k, v in state_dict.items() if k in model_state}
+    missing_keys = [k for k in model_state if k not in loaded_state]
+    if missing_keys:
+        print(f'警告: 检查点中缺少 {len(missing_keys)} 个键: {missing_keys[:5]}...')
     model.load_state_dict(loaded_state, strict=False)
     epoch = checkpoint.get('epoch', '?')
     val_loss = checkpoint.get('val_loss', '?')
     print(f'已加载检查点 (epoch={epoch}, val_loss={val_loss})')
 
     print('\n开始评估测试集...')
-    metrics = evaluate(model, test_loader, device, threshold=args.threshold)
+    metrics = evaluate(model, test_loader, device, threshold=args.threshold, verbose=True)
 
     print('\n========== Test Set Metrics ==========')
     print(f'  Loss:      {metrics["loss"]:.4f}')
@@ -297,8 +301,11 @@ def main():
 
     metrics_path = os.path.join(args.save_dir, 'metrics.txt')
     with open(metrics_path, 'w') as f:
+        f.write(f'checkpoint: {args.checkpoint}\n')
+        f.write(f'epoch: {epoch}\n')
+        f.write(f'val_loss: {val_loss}\n')
         for k, v in metrics.items():
-            f.write(f'{k}: {v:.4f}\n')
+            f.write(f'{k}: {v:.6f}\n')
     print(f'\n指标已保存到: {metrics_path}')
 
     print(f'\n正在生成 {args.num_vis} 张可视化结果...')

@@ -272,7 +272,13 @@ def main():
     model = SwinT_FPANet(img_size=256).to(device)
 
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    state_dict = checkpoint['model_state_dict']
+    model_state = model.state_dict()
+    unexpected_keys = [k for k in state_dict if k not in model_state]
+    if unexpected_keys:
+        print(f'跳过检查点中的 {len(unexpected_keys)} 个额外键: {unexpected_keys[:5]}...')
+    loaded_state = {k: v for k, v in state_dict.items() if k in model_state}
+    model.load_state_dict(loaded_state, strict=False)
     epoch = checkpoint.get('epoch', '?')
     val_loss = checkpoint.get('val_loss', '?')
     print(f'已加载检查点 (epoch={epoch}, val_loss={val_loss})')

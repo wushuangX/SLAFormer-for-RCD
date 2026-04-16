@@ -262,10 +262,23 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         flipped = np.flip(image, axis=flipCode if flipCode >= 0 else 0)
         return np.ascontiguousarray(flipped)
 
+    def _resize_if_needed(self, img, target_size=512):
+        """确保图像尺寸一致"""
+        h, w = img.shape[1:]
+        if h != target_size or w != target_size:
+            import cv2
+            img = cv2.resize(img.transpose(1, 2, 0), (target_size, target_size), interpolation=cv2.INTER_LINEAR)
+            img = img.transpose(2, 0, 1)
+        return img
+
     def __getitem__(self, index):
         imgs_1 = np.ascontiguousarray(self.seq_img_1[index].copy())
         imgs_2 = np.ascontiguousarray(self.seq_img_2[index].copy())
         label = np.ascontiguousarray(self.seq_label[index].copy())
+
+        imgs_1 = self._resize_if_needed(imgs_1)
+        imgs_2 = self._resize_if_needed(imgs_2)
+        label = self._resize_if_needed(label)
 
         if self.isaug:
             imgs_1 = self.augment(imgs_1)
@@ -274,8 +287,8 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
             if len(label.shape) == 2:
                 label = label.reshape(label.shape[0], label.shape[1], 1)
 
-        h, w = imgs_1.shape[1:]
         crop_size = 256
+        h, w = imgs_1.shape[1:]
         start_h = (h - crop_size) // 2
         start_w = (w - crop_size) // 2
         imgs_1 = imgs_1[:, start_h:start_h+crop_size, start_w:start_w+crop_size]

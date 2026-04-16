@@ -274,6 +274,14 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
             if len(label.shape) == 2:
                 label = label.reshape(label.shape[0], label.shape[1], 1)
 
+        h, w = imgs_1.shape[1:]
+        crop_size = 256
+        start_h = (h - crop_size) // 2
+        start_w = (w - crop_size) // 2
+        imgs_1 = imgs_1[:, start_h:start_h+crop_size, start_w:start_w+crop_size]
+        imgs_2 = imgs_2[:, start_h:start_h+crop_size, start_w:start_w+crop_size]
+        label = label[:, start_h:start_h+crop_size, start_w:start_w+crop_size]
+
         if self.image_transform is not None:
             imgs_1 = self.image_transform(imgs_1)
             imgs_2 = self.image_transform(imgs_2)

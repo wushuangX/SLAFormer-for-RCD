@@ -12,12 +12,17 @@ import torchvision
 from microsoft_swintransformer import swin_t, swin_b, swin_l, swin_s
 from thop import clever_format
 from thop import profile
-# from Pvtv2 import pvt_v2_b2
-# from wo_skele import pvt_v2_b2
-# from pvt import pvt_v2_b2
-from FSCDM import SwinT_FPANet
-from layers import *
+from Pvtv2 import pvt_v2_b2
 from modules.Cross_fuse import cross_fuse_3d
+from modules.layers import FaLayer_sum
+
+
+class semantic_context_enhance(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x
 # from modules.Cross_fuse_2d import cross_fuse_2d
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 

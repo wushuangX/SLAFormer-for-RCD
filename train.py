@@ -15,6 +15,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
 
 from Dataset import NPYChangeDetectionDataset
 
@@ -36,6 +38,12 @@ def parse_args():
                         help='训练设备 (cuda/cpu)')
     parser.add_argument('--save_dir', type=str, default='checkpoints',
                         help='模型保存目录')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='从检查点恢复训练，指定检查点路径')
+    parser.add_argument('--start_epoch', type=int, default=0,
+                        help='起始 epoch (从检查点恢复时自动设置)')
+    parser.add_argument('--patience', type=int, default=15,
+                        help='早停耐心值，验证 loss 连续多少个 epoch 不下降则停止')
     return parser.parse_args()
 
 
@@ -82,6 +90,43 @@ def validate(model, dataloader, criterion, device):
             total_loss += loss.item()
 
     return total_loss / len(dataloader)
+
+
+def save_checkpoint(model, optimizer, epoch, val_loss, save_dir, is_best=False):
+    """保存模型检查点，只保留 best 和 latest"""
+    os.makedirs(save_dir, exist_ok=True)
+
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'val_loss': val_loss,
+    }
+
+    latest_path = os.path.join(save_dir, 'checkpoint_latest.pth')
+    torch.save(checkpoint, latest_path)
+    print(f'  已保存最新检查点: {latest_path}')
+
+    if is_best:
+        best_path = os.path.join(save_dir, 'checkpoint_best.pth')
+        torch.save(checkpoint, best_path)
+        print(f'  已保存最佳检查点: {best_path}')
+
+
+def load_checkpoint(model, optimizer, checkpoint_path, device):
+    """加载检查点恢复训练"""
+    if not os.path.exists(checkpoint_path):
+        print(f'检查点不存在: {checkpoint_path}')
+        return 0, float('inf')
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    val_loss = checkpoint['val_loss']
+
+    print(f'已从检查点恢复: epoch {epoch}, val_loss {val_loss:.4f}')
+    return epoch, val_loss
 
 
 def main():
@@ -137,8 +182,57 @@ def main():
     print(f'Train batches: {len(train_loader)}')
     print(f'Val batches: {len(val_loader)}')
 
-    print('\n数据集加载完成，可以开始训练')
-    print('注意: 当前训练循环和模型尚未实现，需要根据SLAFormer架构填充')
+    print('\n数据集加载完成，开始训练')
+
+    from SwinT_3dcross import SwinT_FPANet
+
+    model = SwinT_FPANet(img_size=256).to(device)
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+    start_epoch = args.start_epoch
+    best_val_loss = float('inf')
+
+    if args.resume:
+        start_epoch, best_val_loss = load_checkpoint(model, optimizer, args.resume, device)
+
+    log_dir = os.path.join('logs', datetime.now().strftime('%Y%m%d_%H%M%S'))
+    writer = SummaryWriter(log_dir)
+    print(f'TensorBoard 日志目录: {log_dir}')
+    print(f'运行 \"tensorboard --logdir logs/\" 查看训练曲线')
+
+    print(f'\n开始训练 from epoch {start_epoch}...')
+    patience_counter = 0
+
+    for epoch in range(start_epoch, args.epochs):
+        print(f'\nEpoch {epoch+1}/{args.epochs}')
+
+        train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss = validate(model, val_loader, criterion, device)
+
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Loss/val', val_loss, epoch)
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], epoch)
+
+        print(f'  Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+
+        is_best = val_loss < best_val_loss
+        if is_best:
+            best_val_loss = val_loss
+            patience_counter = 0
+            print(f'  New best model! Val Loss: {best_val_loss:.4f}')
+        else:
+            patience_counter += 1
+            print(f'  No improvement, patience: {patience_counter}/{args.patience}')
+
+        save_checkpoint(model, optimizer, epoch+1, val_loss, args.save_dir, is_best=is_best)
+
+        if patience_counter >= args.patience:
+            print(f'\n早停触发! 连续 {patience_counter} 个 epoch 验证 loss 未下降')
+            break
+
+    writer.close()
+    print(f'\n训练完成! Best Val Loss: {best_val_loss:.4f}')
 
 
 if __name__ == '__main__':

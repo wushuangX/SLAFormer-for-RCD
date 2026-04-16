@@ -243,14 +243,12 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         self.seq_img_2 = read_npy_directory(img2_dir)
         self.seq_label = read_npy_directory(label_dir, label=True)
 
-    def augment(self, image, flipCode):
-        if flipCode == 1:
-            return np.flip(image, axis=1)
-        elif flipCode == 0:
-            return np.flip(image, axis=0)
-        elif flipCode == -1:
-            return np.flip(np.flip(image, axis=0), axis=1)
-        return image
+    def augment(self, image):
+        flipCode = random.choice([-1, 0, 1, 2])
+        if flipCode == 2:
+            return np.ascontiguousarray(image)
+        flipped = np.flip(image, axis=flipCode if flipCode >= 0 else 0)
+        return np.ascontiguousarray(flipped)
 
     def __getitem__(self, index):
         imgs_1 = self.seq_img_1[index].copy()
@@ -258,19 +256,11 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         label = self.seq_label[index].copy()
 
         if self.isaug:
-            flipCode = random.choice([-1, 0, 1, 2])
-            if flipCode != 2:
-                imgs_1 = self.augment(imgs_1, flipCode)
-                imgs_2 = self.augment(imgs_2, flipCode)
-                label = self.augment(label, flipCode)
-                if len(label.shape) == 2:
-                    label = label.reshape(label.shape[0], label.shape[1], 1)
-
-        h, w = label.shape[0], label.shape[1]
-        if self.isSwinT:
-            label_levels = [int(h / 8), int(h / 16), int(h / 32), int(h / 32)]
-        else:
-            label_levels = [int(h / 4), int(h / 4), int(h / 16), int(h / 16)]
+            imgs_1 = self.augment(imgs_1)
+            imgs_2 = self.augment(imgs_2)
+            label = self.augment(label)
+            if len(label.shape) == 2:
+                label = label.reshape(label.shape[0], label.shape[1], 1)
 
         if self.transform is not None:
             imgs_1 = self.transform(imgs_1)

@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from cv2 import resize
 from einops import rearrange
 import torchvision
-from microsoft_swintransformer import swin_t, swin_b, swin_l, swin_s
 from thop import clever_format
 from thop import profile
 from Pvtv2 import pvt_v2_b2

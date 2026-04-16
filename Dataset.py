@@ -1,28 +1,40 @@
 import os
 import cv2
+import numpy as np
+import torch
 import torch.utils.data
 import random
 
+from config import DATASET_PATHS, DEFAULT_DATASET
 
-# this function is for read image,the input is directory name
+
 def read_directory(directory_name, label=False):
-    array_of_img = []  # this if for store all of the image data
-    # this loop is for read each image in this folder,directory_name is the folder name with images.
+    array_of_img = []
     files = os.listdir(directory_name)
     files.sort(key=lambda x: int(x[0:-4]))
     for filename in files:
-        # print(filename) #just for test
-        # img is used to store the image data
         img = cv2.imread(directory_name + "/" + filename)
-        # print(img)
         if label:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0], img.shape[1], 1)
         array_of_img.append(img)
-        # print(img)
-        # print(array_of_img[0].shape)
     return array_of_img
+
+
+def read_npy_directory(directory_name, label=False):
+    """Read numpy (.npy) files from directory."""
+    array_of_data = []
+    files = os.listdir(directory_name)
+    files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+    for filename in files:
+        data = np.load(os.path.join(directory_name, filename))
+        if label:
+            if len(data.shape) == 3 and data.shape[0] == 3:
+                data = data[0]
+            data = (data > 0).astype(np.uint8)
+        array_of_data.append(data)
+    return array_of_data
 
 
 dataset_LEVIR = 'CD_dataset/LEVIR'
@@ -33,38 +45,28 @@ dataset_MTOSCDOS = 'CD_dataset/MTOSCDOS'
 dataset_MTOSCDSO = 'CD_dataset/MTOSCDSO'
 dataset_CAU = 'CD_dataset/CAU'
 
-dataset_CRCD = '/opt/data/private/zq/Datasets/CRCD'#4090
-# dataset_CRCD = '/opt/data/private/RSTeam/zq/CD_Methods/CD_dataset/CRCD'#3090
+def get_dataset_paths(dataset_name):
+    """Get sub-path configuration for a dataset."""
+    if dataset_name in DATASET_PATHS:
+        paths = DATASET_PATHS[dataset_name]
+        return {
+            'root': paths['root'],
+            'format': paths.get('format', 'image'),
+            'train_1': paths['train_A'],
+            'train_2': paths['train_B'],
+            'train_label': paths['train_label'],
+            'test_1': paths['test_A'],
+            'test_2': paths['test_B'],
+            'test_label': paths['test_label'],
+            'val_1': paths.get('val_A'),
+            'val_2': paths.get('val_B'),
+            'val_label': paths.get('val_label'),
+        }
+    return None
 
 
-dataset_WRCD = '/opt/data/private/zq/Datasets/WRCD'#4090
-# dataset_WRCD = '/opt/data/private/RSTeam/zq/CD_Methods/CD_dataset/WRCD'#3090
-
-
-
-'''3090'''
-# dataset_train_1 = '/2012/train/image'
-# dataset_train_2 = '/2014/train/image'
-# dataset_train_label = '/2012_2014label/train'
-# dataset_test_1 = '/2012/test/image'
-# dataset_test_2 = '/2014/test/image'
-# dataset_test_label = '/2012_2014label/test'
-
-'''4090'''
-# dataset_train_1 = '/train1/A'
-# dataset_train_2 = '/train1/B'
-# dataset_train_label = '/train1/label'
-# dataset_test_1 = '/test1/A'
-# dataset_test_2 = '/test1/B'
-# dataset_test_label = '/test1/label/'
-
-#CRCD
-dataset_train_1 = '/train/A'
-dataset_train_2 = '/train/B'
-dataset_train_label = '/train/label'
-dataset_test_1 = '/test/A'
-dataset_test_2 = '/test/B'
-dataset_test_label = '/test/label/'
+dataset_WRCD = DATASET_PATHS['WRCD']['root']
+dataset_CRCD = DATASET_PATHS['CRCD']['root']
 
 
 
@@ -74,78 +76,89 @@ dataset_test_label = '/test/label/'
 
 
 class LevirWhuGzDataset(torch.utils.data.Dataset):
-    def __init__(self, move='train', dataset='Gz', transform=None, isAug=False, isSwinT=False):
+    def __init__(self, move='train', dataset='WRCD', transform=None, isAug=False, isSwinT=False):
         super(LevirWhuGzDataset, self).__init__()
-        seq_img_1 = []  # to pacify Pycharm
-        seq_img_2 = []  # to pacify Pycharm
-        seq_label = []  # to pacify Pycharm
+        seq_img_1 = []
+        seq_img_2 = []
+        seq_label = []
         self.isaug = isAug
         self.isSwinT = isSwinT
         self.move = move
-        if dataset == 'LEVIR':
-            if move == 'train':
-                seq_img_1 = read_directory(dataset_LEVIR + dataset_train_1)
-                seq_img_2 = read_directory(dataset_LEVIR + dataset_train_2)
-                seq_label = read_directory(dataset_LEVIR + dataset_train_label, label=True)
-            elif move == 'test':
-                seq_img_1 = read_directory(dataset_LEVIR + dataset_test_1)
-                seq_img_2 = read_directory(dataset_LEVIR + dataset_test_2)
-                seq_label = read_directory(dataset_LEVIR + dataset_test_label, label=True)
-        elif dataset == 'WHU':
-            if move == 'train':
-                seq_img_1 = read_directory(dataset_WHU + dataset_train_1)
-                seq_img_2 = read_directory(dataset_WHU + dataset_train_2)
-                seq_label = read_directory(dataset_WHU + dataset_train_label, label=True)
-            elif move == 'test':
-                seq_img_1 = read_directory(dataset_WHU + dataset_test_1)
-                seq_img_2 = read_directory(dataset_WHU + dataset_test_2)
-                seq_label = read_directory(dataset_WHU + dataset_test_label, label=True)
-        elif dataset == 'Gz':
-            if move == 'train':
-                seq_img_1 = read_directory(dataset_PRCV + dataset_train_1)
-                seq_img_2 = read_directory(dataset_PRCV + dataset_train_2)
-                seq_label = read_directory(dataset_PRCV + dataset_train_label, label=True)
-            elif move == 'test':
-                seq_img_1 = read_directory(dataset_PRCV + dataset_test_1)
-                seq_img_2 = read_directory(dataset_PRCV + dataset_test_2)
-                seq_label = read_directory(dataset_PRCV + dataset_test_label, label=True)
-        elif dataset == 'MTWHU':
-            if move == 'train':
-                seq_img_1 = read_directory(dataset_MTWHU + dataset_train_1)
-                seq_img_2 = read_directory(dataset_MTWHU + dataset_train_2)
-                seq_label = read_directory(dataset_MTWHU + dataset_train_label, label=True)
-            elif move == 'test':
-                seq_img_1 = read_directory(dataset_MTWHU + dataset_test_1)
-                seq_img_2 = read_directory(dataset_MTWHU + dataset_test_2)
-                seq_label = read_directory(dataset_MTWHU + dataset_test_label, label=True)
-        elif dataset == 'CAU':
-            if move == 'train':
-                seq_img_1 = read_directory(dataset_CAU + dataset_train_1)
-                seq_img_2 = read_directory(dataset_CAU + dataset_train_2)
-                seq_label = read_directory(dataset_CAU + dataset_train_label, label=True)
-            elif move == 'test':
-                seq_img_1 = read_directory(dataset_CAU + dataset_test_1)
-                seq_img_2 = read_directory(dataset_CAU + dataset_test_2)
-                seq_label = read_directory(dataset_CAU + dataset_test_label, label=True)
 
+        paths = get_dataset_paths(dataset)
+        dataset_root = paths['root'] if paths else None
+
+        if dataset == 'LEVIR':
+            root = dataset_LEVIR
+            if move == 'train':
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
+            elif move == 'test':
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
+        elif dataset == 'WHU':
+            root = dataset_WHU
+            if move == 'train':
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
+            elif move == 'test':
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
+        elif dataset == 'Gz':
+            root = dataset_PRCV
+            if move == 'train':
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
+            elif move == 'test':
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
+        elif dataset == 'MTWHU':
+            root = dataset_MTWHU
+            if move == 'train':
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
+            elif move == 'test':
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
+        elif dataset == 'CAU':
+            root = dataset_CAU
+            if move == 'train':
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
+            elif move == 'test':
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
         elif dataset == 'CRCD':
+            root = dataset_CRCD
             if move == 'train':
-                seq_img_1 = read_directory(dataset_CRCD + dataset_train_1)
-                seq_img_2 = read_directory(dataset_CRCD + dataset_train_2)
-                seq_label = read_directory(dataset_CRCD + dataset_train_label, label=True)
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
             elif move == 'test':
-                seq_img_1 = read_directory(dataset_CRCD + dataset_test_1)
-                seq_img_2 = read_directory(dataset_CRCD + dataset_test_2)
-                seq_label = read_directory(dataset_CRCD + dataset_test_label, label=True)
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
         elif dataset == 'WRCD':
+            root = dataset_WRCD
             if move == 'train':
-                seq_img_1 = read_directory(dataset_WRCD + dataset_train_1)
-                seq_img_2 = read_directory(dataset_WRCD + dataset_train_2)
-                seq_label = read_directory(dataset_WRCD + dataset_train_label, label=True)
+                seq_img_1 = read_directory(root + paths['train_1'])
+                seq_img_2 = read_directory(root + paths['train_2'])
+                seq_label = read_directory(root + paths['train_label'], label=True)
             elif move == 'test':
-                seq_img_1 = read_directory(dataset_WRCD + dataset_test_1)
-                seq_img_2 = read_directory(dataset_WRCD + dataset_test_2)
-                seq_label = read_directory(dataset_WRCD + dataset_test_label, label=True)
+                seq_img_1 = read_directory(root + paths['test_1'])
+                seq_img_2 = read_directory(root + paths['test_2'])
+                seq_label = read_directory(root + paths['test_label'], label=True)
+
         self.seq_img_1 = seq_img_1
         self.seq_img_2 = seq_img_2
         self.seq_label = seq_label
@@ -193,6 +206,78 @@ class LevirWhuGzDataset(torch.utils.data.Dataset):
                 label = self.transform(label)
 
             return imgs_1, imgs_2, label
+
+    def __len__(self):
+        return len(self.seq_label)
+
+
+class NPYChangeDetectionDataset(torch.utils.data.Dataset):
+    """NPY格式变化检测数据集 - 用于加载预处理好的numpy patches"""
+
+    def __init__(self, move='train', dataset='WRCD', transform=None, isAug=False, isSwinT=False, data_root=None):
+        super(NPYChangeDetectionDataset, self).__init__()
+        self.isaug = isAug
+        self.isSwinT = isSwinT
+        self.move = move
+        self.transform = transform
+
+        paths = get_dataset_paths(dataset)
+        if not paths:
+            raise ValueError(f"Unknown dataset: {dataset}")
+
+        root = data_root if data_root else paths['root']
+        if move == 'train':
+            img1_dir = root + paths['train_1']
+            img2_dir = root + paths['train_2']
+            label_dir = root + paths['train_label']
+        elif move == 'val':
+            img1_dir = root + paths['val_1']
+            img2_dir = root + paths['val_2']
+            label_dir = root + paths['val_label']
+        else:
+            img1_dir = root + paths['test_1']
+            img2_dir = root + paths['test_2']
+            label_dir = root + paths['test_label']
+
+        self.seq_img_1 = read_npy_directory(img1_dir)
+        self.seq_img_2 = read_npy_directory(img2_dir)
+        self.seq_label = read_npy_directory(label_dir, label=True)
+
+    def augment(self, image, flipCode):
+        if flipCode == 1:
+            return np.flip(image, axis=1)
+        elif flipCode == 0:
+            return np.flip(image, axis=0)
+        elif flipCode == -1:
+            return np.flip(np.flip(image, axis=0), axis=1)
+        return image
+
+    def __getitem__(self, index):
+        imgs_1 = self.seq_img_1[index].copy()
+        imgs_2 = self.seq_img_2[index].copy()
+        label = self.seq_label[index].copy()
+
+        if self.isaug:
+            flipCode = random.choice([-1, 0, 1, 2])
+            if flipCode != 2:
+                imgs_1 = self.augment(imgs_1, flipCode)
+                imgs_2 = self.augment(imgs_2, flipCode)
+                label = self.augment(label, flipCode)
+                if len(label.shape) == 2:
+                    label = label.reshape(label.shape[0], label.shape[1], 1)
+
+        h, w = label.shape[0], label.shape[1]
+        if self.isSwinT:
+            label_levels = [int(h / 8), int(h / 16), int(h / 32), int(h / 32)]
+        else:
+            label_levels = [int(h / 4), int(h / 4), int(h / 16), int(h / 16)]
+
+        if self.transform is not None:
+            imgs_1 = self.transform(imgs_1)
+            imgs_2 = self.transform(imgs_2)
+            label = self.transform(label)
+
+        return imgs_1, imgs_2, label
 
     def __len__(self):
         return len(self.seq_label)

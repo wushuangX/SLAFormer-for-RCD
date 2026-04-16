@@ -264,11 +264,14 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
 
     def _resize_if_needed(self, img, target_size=512):
         """确保图像尺寸一致"""
-        h, w = img.shape[1:]
-        if h != target_size or w != target_size:
-            import cv2
-            img = cv2.resize(img.transpose(1, 2, 0), (target_size, target_size), interpolation=cv2.INTER_LINEAR)
-            img = img.transpose(2, 0, 1)
+        import cv2
+        if len(img.shape) == 2:
+            img = cv2.resize(img, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
+        else:
+            h, w = img.shape[1:]
+            if h != target_size or w != target_size:
+                img = cv2.resize(img.transpose(1, 2, 0), (target_size, target_size), interpolation=cv2.INTER_LINEAR)
+                img = img.transpose(2, 0, 1)
         return img
 
     def __getitem__(self, index):

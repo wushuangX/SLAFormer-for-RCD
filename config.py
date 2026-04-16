@@ -40,6 +40,9 @@ DATASET_PATHS = {
         'test_A': '/test/A',
         'test_B': '/test/B',
         'test_label': '/test/label',
+        'val_A': '/val/A',
+        'val_B': '/val/B',
+        'val_label': '/val/label',
     },
 }
 

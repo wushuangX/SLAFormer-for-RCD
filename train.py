@@ -47,11 +47,18 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_transform():
-    """获取数据预处理变换"""
+def get_image_transform():
+    """获取图像预处理变换"""
     return transforms.Compose([
-        transforms.ToTensor(),
+        transforms.Lambda(lambda x: torch.from_numpy(x.copy()).float()),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+
+def get_label_transform():
+    """获取标签预处理变换"""
+    return transforms.Compose([
+        transforms.Lambda(lambda x: torch.from_numpy(x.copy()).float()),
     ])
 
 
@@ -151,14 +158,16 @@ def main():
         move='train',
         dataset=args.dataset,
         data_root=args.data_root,
-        isAug=True
+        isAug=True,
+        transform=get_image_transform()
     )
 
     val_dataset = NPYChangeDetectionDataset(
         move='val',
         dataset=args.dataset,
         data_root=args.data_root,
-        isAug=False
+        isAug=False,
+        transform=get_image_transform()
     )
 
     train_loader = DataLoader(

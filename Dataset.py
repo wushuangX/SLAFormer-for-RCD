@@ -4,8 +4,16 @@ import numpy as np
 import torch
 import torch.utils.data
 import random
+from torchvision import transforms
 
 from config import DATASET_PATHS, DEFAULT_DATASET
+
+
+def get_label_transform():
+    """获取标签预处理变换"""
+    return transforms.Compose([
+        transforms.Lambda(lambda x: torch.from_numpy(x.copy()).float()),
+    ])
 
 
 def read_directory(directory_name, label=False):
@@ -32,7 +40,9 @@ def read_npy_directory(directory_name, label=False):
         if label:
             if len(data.shape) == 3 and data.shape[0] == 3:
                 data = data[0]
-            data = (data > 0).astype(np.uint8)
+            data = np.ascontiguousarray((data > 0).astype(np.uint8))
+        else:
+            data = np.ascontiguousarray(data)
         array_of_data.append(data)
     return array_of_data
 
@@ -220,6 +230,8 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         self.isSwinT = isSwinT
         self.move = move
         self.transform = transform
+        self.image_transform = transform
+        self.label_transform = get_label_transform()
 
         paths = get_dataset_paths(dataset)
         if not paths:
@@ -251,9 +263,9 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         return np.ascontiguousarray(flipped)
 
     def __getitem__(self, index):
-        imgs_1 = self.seq_img_1[index].copy()
-        imgs_2 = self.seq_img_2[index].copy()
-        label = self.seq_label[index].copy()
+        imgs_1 = np.ascontiguousarray(self.seq_img_1[index].copy())
+        imgs_2 = np.ascontiguousarray(self.seq_img_2[index].copy())
+        label = np.ascontiguousarray(self.seq_label[index].copy())
 
         if self.isaug:
             imgs_1 = self.augment(imgs_1)
@@ -262,10 +274,12 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
             if len(label.shape) == 2:
                 label = label.reshape(label.shape[0], label.shape[1], 1)
 
-        if self.transform is not None:
-            imgs_1 = self.transform(imgs_1)
-            imgs_2 = self.transform(imgs_2)
-            label = self.transform(label)
+        if self.image_transform is not None:
+            imgs_1 = self.image_transform(imgs_1)
+            imgs_2 = self.image_transform(imgs_2)
+
+        if self.label_transform is not None:
+            label = self.label_transform(label)
 
         return imgs_1, imgs_2, label
 

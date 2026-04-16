@@ -256,23 +256,61 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
         self.seq_label = read_npy_directory(label_dir, label=True)
 
     def augment(self, image):
-        flipCode = random.choice([-1, 0, 1, 2])
-        if flipCode == 2:
-            return np.ascontiguousarray(image)
-        flipped = np.flip(image, axis=flipCode if flipCode >= 0 else 0)
-        return np.ascontiguousarray(flipped)
+        flip_code = random.choice([-1, 0, 1, 2])
+        if flip_code == 2:
+            return image
 
-    def _resize_if_needed(self, img, target_size=512):
-        """确保图像尺寸一致"""
-        import cv2
+        if image.ndim == 2:
+            if flip_code == 0:
+                return np.ascontiguousarray(image[::-1, :])
+            if flip_code == 1:
+                return np.ascontiguousarray(image[:, ::-1])
+            return np.ascontiguousarray(image[::-1, ::-1])
+
+        # image expected CHW
+        if flip_code == 0:
+            return np.ascontiguousarray(image[:, ::-1, :])
+        if flip_code == 1:
+            return np.ascontiguousarray(image[:, :, ::-1])
+        return np.ascontiguousarray(image[:, ::-1, ::-1])
+
+    def _to_hwc(self, img):
+        """统一为 HWC 格式，避免不同样本维度分支不一致"""
         if len(img.shape) == 2:
-            img = cv2.resize(img, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
-        else:
-            h, w = img.shape[1:]
-            if h != target_size or w != target_size:
-                img = cv2.resize(img.transpose(1, 2, 0), (target_size, target_size), interpolation=cv2.INTER_LINEAR)
-                img = img.transpose(2, 0, 1)
-        return img
+            return img[:, :, None]
+        if len(img.shape) == 3:
+            # CHW -> HWC
+            if img.shape[0] in (1, 3, 4) and img.shape[1] > 4 and img.shape[2] > 4:
+                return np.transpose(img, (1, 2, 0))
+            return img
+        raise ValueError(f'Unsupported array dimension: {img.shape}')
+
+    def _to_chw(self, img):
+        """统一为 CHW 格式供 torch.from_numpy 直接转 tensor"""
+        if len(img.shape) == 2:
+            return np.ascontiguousarray(img[:, :, None].transpose(2, 0, 1))
+        if len(img.shape) == 3:
+            # HWC -> CHW (including single channel)
+            if img.shape[2] in (1, 3, 4):
+                return np.ascontiguousarray(np.transpose(img, (2, 0, 1)))
+            if img.shape[0] in (1, 3, 4):
+                return np.ascontiguousarray(img)
+        raise ValueError(f'Unsupported array dimension: {img.shape}')
+
+    def _resize_if_needed(self, img, target_size=512, is_label=False):
+        """统一处理不同维度并缩放到目标尺寸。
+
+        最终始终返回 CHW/CHB 的 numpy 数组。
+        """
+        import cv2
+        interpolation = cv2.INTER_NEAREST if is_label else cv2.INTER_LINEAR
+
+        img_hwc = self._to_hwc(np.ascontiguousarray(img))
+        h, w = img_hwc.shape[:2]
+        if h != target_size or w != target_size:
+            img_hwc = cv2.resize(img_hwc, (target_size, target_size), interpolation=interpolation)
+
+        return self._to_chw(np.ascontiguousarray(img_hwc))
 
     def __getitem__(self, index):
         imgs_1 = np.ascontiguousarray(self.seq_img_1[index].copy())
@@ -281,14 +319,15 @@ class NPYChangeDetectionDataset(torch.utils.data.Dataset):
 
         imgs_1 = self._resize_if_needed(imgs_1)
         imgs_2 = self._resize_if_needed(imgs_2)
-        label = self._resize_if_needed(label)
+        label = self._resize_if_needed(label, is_label=True)
 
         if self.isaug:
             imgs_1 = self.augment(imgs_1)
             imgs_2 = self.augment(imgs_2)
             label = self.augment(label)
-            if len(label.shape) == 2:
-                label = label.reshape(label.shape[0], label.shape[1], 1)
+
+        if len(label.shape) == 2:
+            label = label.reshape(label.shape[0], label.shape[1], 1)
 
         crop_size = 256
         h, w = imgs_1.shape[1:]
